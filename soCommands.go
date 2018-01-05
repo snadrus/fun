@@ -3,16 +3,22 @@ package fun
 import (
 	"errors"
 	"runtime"
+	"strings"
 )
 
 type ErrBridge interface {
 	So(bool) ErrBridge
 	Then(func() error) ErrBridge
-	Error() error
+	ElseErr(s string) ErrBridge
+	GetError() error
 }
 
 type usd struct {
 	err error
+}
+
+func (u *usd) GetError() error {
+	return u.err
 }
 
 // so you can just return one of these
@@ -49,6 +55,13 @@ func Then(f func() error) ErrBridge {
 func (u *usd) Then(f func() error) ErrBridge {
 	if u.err != nil {
 		u.err = f()
+	}
+	return u
+}
+
+func (u *usd) ElseErr(s string) ErrBridge {
+	if u.err != nil {
+		u.err = errors.New(strings.Replace(s, "%e", u.err.Error(), 1))
 	}
 	return u
 }
