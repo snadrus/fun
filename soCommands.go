@@ -7,9 +7,9 @@ import (
 )
 
 type ErrBridge interface {
-	So(bool) ErrBridge
-	Then(func() error) ErrBridge
-	ElseErr(s string) ErrBridge
+	If(condition bool, thenErrText string) ErrBridge
+	Then(error) ErrBridge
+	AugmentError(s string) ErrBridge
 	GetError() error
 }
 
@@ -17,12 +17,7 @@ type usd struct {
 	err error
 }
 
-func (u *usd) GetError() error {
-	return u.err
-}
-
-// so you can just return one of these
-func (u *usd) Error() error {
+func (u *usd) GetError() error { // must GetError so nil is possible
 	if u.err != nil {
 		u.err = errors.New(getCaller(3) + u.err.Error())
 	}
@@ -36,30 +31,30 @@ func getCaller(i int) string {
 	return f.Function
 }
 
-func So(b bool) ErrBridge {
+func If(b bool, errText string) ErrBridge {
 	u := &usd{}
-	return u.So(b)
+	return u.If(b, errText)
 }
 
-func (u *usd) So(b bool) ErrBridge {
-	if u.err != nil && !b {
-		u.err = errors.New("Validation failed")
+func (u *usd) If(b bool, errText string) ErrBridge {
+	if u.err != nil && b {
+		u.err = errors.New(errText)
 	}
 	return u
 }
 
-func Then(f func() error) ErrBridge {
-	return &usd{err: f()}
+func Then(e error) ErrBridge {
+	return &usd{err: e}
 }
 
-func (u *usd) Then(f func() error) ErrBridge {
+func (u *usd) Then(e error) ErrBridge {
 	if u.err != nil {
-		u.err = f()
+		u.err = e
 	}
 	return u
 }
 
-func (u *usd) ElseErr(s string) ErrBridge {
+func (u *usd) AugmentError(s string) ErrBridge {
 	if u.err != nil {
 		u.err = errors.New(strings.Replace(s, "%e", u.err.Error(), 1))
 	}
