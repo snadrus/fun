@@ -1,3 +1,4 @@
+// Fun error chains
 package fun
 
 import (
@@ -6,10 +7,23 @@ import (
 	"strings"
 )
 
-type ErrBridge interface {
-	If(condition bool, thenErrText string) ErrBridge
-	Then(error) ErrBridge
-	AugmentError(s string) ErrBridge
+type ErrorChain interface {
+	// If this condition, produce an error with the following text
+	If(condition bool, thenErrText string) ErrorChain
+
+	// Then IIFE here
+	// Ex:  Then(func()error{ return errors.New("hi")}())
+	Then(error) ErrorChain
+
+	// If b, run f, else run g. Either can be nil to skip.
+	// Ex:    ...IfElse(!u.InTest, u.DoNextStep, nil)
+	IfElse(b bool, f func() error, g func() error) ErrorChain
+
+	// Improve the error. %e in the string is replaced with the error
+	// Ex: If(sqlQuery().Scan()).AugmentError("Sql was unhappy: %e").ReturnError()
+	AugmentError(s string) ErrorChain
+
+	// Gets the error with this (enclosing) function name included.
 	GetError() error
 }
 
@@ -31,30 +45,54 @@ func getCaller(i int) string {
 	return f.Function
 }
 
-func If(b bool, errText string) ErrBridge {
+// If this condition, produce an error with the following text
+func If(b bool, errText string) ErrorChain {
 	u := &usd{}
 	return u.If(b, errText)
 }
 
-func (u *usd) If(b bool, errText string) ErrBridge {
+// If b, run f, else run g. Either can be nil to skip.
+func IfElse(b bool, f func() error, g func() error) ErrorChain {
+	if b && f != nil {
+		return Then(f())
+	} else if g != nil {
+		return Then(g())
+	}
+	return &usd{}
+}
+
+// Then IIFE here:  Then(func()error{ return errors.New("hi")}())
+func Then(e error) ErrorChain {
+	return &usd{err: e}
+}
+
+func (u *usd) If(b bool, errText string) ErrorChain {
 	if u.err != nil && b {
 		u.err = errors.New(errText)
 	}
 	return u
 }
 
-func Then(e error) ErrBridge {
-	return &usd{err: e}
+func (u *usd) IfElse(b bool, f func() error, g func() error) ErrorChain {
+	if u.err != nil {
+		return u
+	}
+	if b && f != nil {
+		return u.Then(f())
+	} else if g != nil {
+		return u.Then(g())
+	}
+	return u
 }
 
-func (u *usd) Then(e error) ErrBridge {
+func (u *usd) Then(e error) ErrorChain {
 	if u.err != nil {
 		u.err = e
 	}
 	return u
 }
 
-func (u *usd) AugmentError(s string) ErrBridge {
+func (u *usd) AugmentError(s string) ErrorChain {
 	if u.err != nil {
 		u.err = errors.New(strings.Replace(s, "%e", u.err.Error(), 1))
 	}
