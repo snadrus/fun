@@ -21,10 +21,16 @@ type ErrorChain interface {
 
 	// Improve the error. %e in the string is replaced with the error
 	// Ex: If(sqlQuery().Scan()).AugmentError("Sql was unhappy: %e").ReturnError()
-	AugmentError(s string) ErrorChain
+	Explain(s string) ErrorChain
 
 	// Gets the error with this (enclosing) function name included.
 	GetError() error
+
+	// For a simple range (0 to i-1):   fun.For(len(z), func(i idx)error{ fmt.Println(z[i]) })
+	For(i int, f func(i int) error) ErrorChain
+
+	// Run commands in parallel and wait for them to complete before proceeding
+	Parallel(limit uint, f func(g GoMaker)) ErrorChain
 }
 
 type usd struct {
@@ -86,15 +92,30 @@ func (u *usd) IfElse(b bool, f func() error, g func() error) ErrorChain {
 }
 
 func (u *usd) Then(e error) ErrorChain {
-	if u.err != nil {
+	if u.err == nil {
 		u.err = e
 	}
 	return u
 }
 
-func (u *usd) AugmentError(s string) ErrorChain {
+func (u *usd) Explain(s string) ErrorChain {
 	if u.err != nil {
 		u.err = errors.New(strings.Replace(s, "%e", u.err.Error(), 1))
+	}
+	return u
+}
+
+func For(i int, f func(i int) error) ErrorChain {
+	return (&usd{}).For(i, f)
+}
+func (u *usd) For(i int, f func(i int) error) ErrorChain {
+	if u.err != nil {
+		return u
+	}
+	for a := 0; a < i; a++ {
+		if u.err = f(a); u.err != nil {
+			return u
+		}
 	}
 	return u
 }
