@@ -34,7 +34,8 @@ type ErrorChain interface {
 }
 
 type usd struct {
-	err error
+	err       error
+	explained bool
 }
 
 func (u *usd) GetError() error { // must GetError so nil is possible
@@ -99,8 +100,9 @@ func (u *usd) Then(e error) ErrorChain {
 }
 
 func (u *usd) Explain(s string) ErrorChain {
-	if u.err != nil {
+	if u.err != nil && !u.explained {
 		u.err = errors.New(strings.Replace(s, "%e", u.err.Error(), 1))
+		u.explained = true
 	}
 	return u
 }
