@@ -29,6 +29,7 @@ type goMaker struct {
 	mutex         sync.RWMutex
 	todos         map[string]chan bool
 	defers        []func()
+	limitChan     chan bool
 }
 
 func Parallel(limit uint, f func(g GoMaker)) ErrorChain {
@@ -41,6 +42,12 @@ func (u *usd) Parallel(limit uint, f func(g GoMaker)) ErrorChain {
 	signal := sync.WaitGroup{}
 	signal.Add(1)
 	g := &goMaker{signal: signal, todos: map[string]chan bool{}, defers: []func(){}}
+	if limit != 0 {
+		g.limitChan = make(chan bool, limit+1)
+		for a := 0; a < int(limit); a++ {
+			g.limitChan <- true
+		}
+	}
 	f(g)
 
 	atomic.StoreUint64(&g.atomicWaiting, 1)
@@ -84,6 +91,12 @@ func (g *goMaker) Go(f func() error) {
 			}
 		}()
 
+		if g.limitChan != nil {
+			<-g.limitChan
+			defer func() {
+				g.limitChan <- true
+			}()
+		}
 		err := f()
 		if err != nil {
 			g.setErr(err.Error())

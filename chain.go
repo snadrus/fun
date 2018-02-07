@@ -29,7 +29,8 @@ type ErrorChain interface {
 	// For a simple range (0 to i-1):   fun.For(len(z), func(i idx)error{ fmt.Println(z[i]) })
 	For(i int, f func(i int) error) ErrorChain
 
-	// Run commands in parallel and wait for them to complete before proceeding
+	// Run commands in parallel and wait for them to complete before proceeding.
+	// limit is how many concurrent Go calls (not GoNamed) are allowed. 0==unlimited
 	Parallel(limit uint, f func(g GoMaker)) ErrorChain
 }
 
