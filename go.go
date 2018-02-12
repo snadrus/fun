@@ -22,7 +22,7 @@ type GoMaker interface {
 }
 
 type goMaker struct {
-	signal        sync.WaitGroup // only used for signaling
+	wg            sync.WaitGroup // only used for signaling
 	atomicCount   int64
 	atomicWaiting uint64
 	err           error
@@ -39,9 +39,8 @@ func (u *usd) Parallel(limit uint, f func(g GoMaker)) ErrorChain {
 	if u.err != nil {
 		return u
 	}
-	signal := sync.WaitGroup{}
-	signal.Add(1)
-	g := &goMaker{signal: signal, todos: map[string]chan bool{}, defers: []func(){}}
+	wg := sync.WaitGroup{}
+	g := &goMaker{wg: wg, todos: map[string]chan bool{}, defers: []func(){}}
 	if limit != 0 {
 		g.limitChan = make(chan bool, limit+1)
 		for a := 0; a < int(limit); a++ {
@@ -49,9 +48,8 @@ func (u *usd) Parallel(limit uint, f func(g GoMaker)) ErrorChain {
 		}
 	}
 	f(g)
-
 	atomic.StoreUint64(&g.atomicWaiting, 1)
-	signal.Wait()
+	wg.Wait()
 	for _, d := range g.defers {
 		d()
 	}
@@ -66,21 +64,18 @@ func (g *goMaker) setErr(s string) {
 }
 
 func (g *goMaker) wgDone() {
-	tmp := atomic.AddInt64(&g.atomicCount, -1)
-	if tmp == 0 { // either we are done, or something else is yet-to-be-added
-		if atomic.LoadUint64(&g.atomicWaiting) == 1 {
-			g.signal.Done()
-		}
-	}
+	atomic.AddInt64(&g.atomicCount, -1)
+	g.wg.Done()
 }
 func (g *goMaker) Go(f func() error) {
 	atomic.AddInt64(&g.atomicCount, 1)
+	g.wg.Add(1)
 	go func() {
 		defer g.wgDone()
 
 		g.mutex.RLock()
 		tmp := g.err
-		g.mutex.Lock()
+		g.mutex.RUnlock()
 		if tmp != nil {
 			return
 		}
@@ -127,6 +122,7 @@ func (g *goMaker) GoNamed(csvDepsGtName string, f func() error, fDefer func()) {
 	}
 
 	atomic.AddInt64(&g.atomicCount, 1)
+	g.wg.Add(1)
 	go func() {
 		defer g.wgDone()
 		for _, depCh := range waitFor {
