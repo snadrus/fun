@@ -7,8 +7,16 @@ import (
 	"sync/atomic"
 )
 
-// We already have a For loop function,
-
+// GoMaker is safe to start GoRoutines. It handles panics & runs until first error.
+// GoMaker funcs are safe to call inside GoMaker-started functions. They'll be waited-for by Parallel
+// Safe:
+//     func(g GoMaker){
+//			g.Go(func()error { fmt.Println("hi");
+//				g.Go(func(){ fmt.Println("Also Safe"); return nil  })
+//			})
+//			return nil
+//		}
+// NOTE: it's UNSAFE to start GoMaker functions outside of Parallel or via other "go" commands.
 type GoMaker interface {
 	// Go (as part of a wait group)
 	Go(f func() error)
@@ -22,8 +30,7 @@ type GoMaker interface {
 }
 
 type goMaker struct {
-	wg            sync.WaitGroup // only used for signaling
-	atomicCount   int64
+	wgs           WgStack // only used for signaling
 	atomicWaiting uint64
 	err           error
 	mutex         sync.RWMutex
@@ -39,8 +46,7 @@ func (u *usd) Parallel(limit uint, f func(g GoMaker)) ErrorChain {
 	if u.err != nil {
 		return u
 	}
-	wg := sync.WaitGroup{}
-	g := &goMaker{wg: wg, todos: map[string]chan bool{}, defers: []func(){}}
+	g := &goMaker{wgs: WgStack{}, todos: map[string]chan bool{}, defers: []func(){}}
 	if limit != 0 {
 		g.limitChan = make(chan bool, limit+1)
 		for a := 0; a < int(limit); a++ {
@@ -49,7 +55,7 @@ func (u *usd) Parallel(limit uint, f func(g GoMaker)) ErrorChain {
 	}
 	f(g)
 	atomic.StoreUint64(&g.atomicWaiting, 1)
-	wg.Wait()
+	g.wgs.Wait()
 	for _, d := range g.defers {
 		d()
 	}
@@ -63,15 +69,10 @@ func (g *goMaker) setErr(s string) {
 	g.err = fmt.Errorf("%s", s)
 }
 
-func (g *goMaker) wgDone() {
-	atomic.AddInt64(&g.atomicCount, -1)
-	g.wg.Done()
-}
 func (g *goMaker) Go(f func() error) {
-	atomic.AddInt64(&g.atomicCount, 1)
-	g.wg.Add(1)
+	done := g.wgs.Add(1)
 	go func() {
-		defer g.wgDone()
+		defer done()
 
 		g.mutex.RLock()
 		tmp := g.err
@@ -121,10 +122,9 @@ func (g *goMaker) GoNamed(csvDepsGtName string, f func() error, fDefer func()) {
 		}
 	}
 
-	atomic.AddInt64(&g.atomicCount, 1)
-	g.wg.Add(1)
+	done := g.wgs.Add(1) // This line panics if added after done. So add all upfront! (FUTURE?)
 	go func() {
-		defer g.wgDone()
+		defer done()
 		for _, depCh := range waitFor {
 			<-depCh
 		}
