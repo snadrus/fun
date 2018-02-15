@@ -127,10 +127,8 @@ func (g *goMaker) GoNamed(csvDepsGtName string, f func() error, fDefer func()) {
 	go func() {
 		defer done()
 		for _, depCh := range waitFor {
-			fmt.Println(name, "waiting on ")
 			<-depCh
 		}
-		fmt.Println("wait done for", name)
 		g.mutex.RLock()
 		err := g.err
 		g.mutex.RUnlock()
