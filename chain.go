@@ -41,14 +41,14 @@ type usd struct {
 
 func (u *usd) GetError() error { // must GetError so nil is possible
 	if u.err != nil {
-		u.err = errors.New(getCaller(3) + u.err.Error())
+		u.err = errors.New(getCaller(3) + " " + u.err.Error())
 	}
 	return u.err
 }
 
 func getCaller(i int) string {
 	res := make([]uintptr, i*2)
-	runtime.Callers(2, res)
+	runtime.Callers(i, res)
 	f, _ := runtime.CallersFrames(res).Next()
 	return f.Function
 }

@@ -139,7 +139,7 @@ func (g *goMaker) GoNamed(csvDepsGtName string, f func() error, fDefer func()) {
 			err = f()
 			if err != nil {
 				g.mutex.Lock()
-				if g.err != nil {
+				if g.err == nil {
 					g.err = err
 				}
 				g.mutex.Unlock()
