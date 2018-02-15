@@ -30,7 +30,9 @@ func (w *WgStack) Wait() {
 			break
 		}
 		w.mutex.Lock()
-		wg := w.s[len(w.s)-1].wg
+		el := w.s[len(w.s)-1]
+		el.waitedOn = true
+		wg := el.wg
 		w.s = w.s[:len(w.s)-1]
 		w.mutex.Unlock()
 		wg.Wait()

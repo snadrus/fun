@@ -109,10 +109,11 @@ func (g *goMaker) GoNamed(csvDepsGtName string, f func() error, fDefer func()) {
 	if nil != g.todos[name] {
 		panic("bad code: cannot have 2 gonames the same")
 	}
-	g.todos[name] = make(chan bool)
-	depAry := res[:len(res)-1]
-	if len(depAry) > 0 {
-		for _, dep := range strings.Split(depAry[0], ",") {
+	if _, ok := g.todos[name]; !ok {
+		g.todos[name] = make(chan bool)
+	}
+	if len(res) == 2 {
+		for _, dep := range strings.Split(res[0], ",") {
 			ch, ok := g.todos[dep]
 			if !ok {
 				ch = make(chan bool)
@@ -126,8 +127,10 @@ func (g *goMaker) GoNamed(csvDepsGtName string, f func() error, fDefer func()) {
 	go func() {
 		defer done()
 		for _, depCh := range waitFor {
+			fmt.Println(name, "waiting on ")
 			<-depCh
 		}
+		fmt.Println("wait done for", name)
 		g.mutex.RLock()
 		err := g.err
 		g.mutex.RUnlock()
@@ -149,5 +152,8 @@ func (g *goMaker) GoNamed(csvDepsGtName string, f func() error, fDefer func()) {
 			g.defers = append([]func(){fDefer}, g.defers...)
 			g.mutex.Unlock()
 		}
+		g.mutex.Lock()
+		close(g.todos[name])
+		g.mutex.Unlock()
 	}()
 }
