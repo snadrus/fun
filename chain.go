@@ -3,7 +3,9 @@ package fun
 
 import (
 	"errors"
+	"fmt"
 	"runtime"
+	"runtime/debug"
 	"strings"
 )
 
@@ -11,13 +13,9 @@ type ErrorChain interface {
 	// If this condition, produce an error with the following text
 	If(condition bool, thenErrText string) ErrorChain
 
-	// Then IIFE here
-	// Ex:  Then(func()error{ return errors.New("hi")}())
-	Then(error) ErrorChain
-
-	// If b, run f, else run g. Either can be nil to skip.
-	// Ex:    ...IfElse(!u.InTest, u.DoNextStep, nil)
-	IfElse(b bool, f func() error, g func() error) ErrorChain
+	// Recover allows enclosed function's PANICs to be captured as errors in the chain.
+	// Works great with fun.PanicOnError
+	Recover(f func()) ErrorChain
 
 	// Improve the error. %e in the string is replaced with the error
 	// Ex: If(sqlQuery().Scan()).AugmentError("Sql was unhappy: %e").ReturnError()
@@ -59,21 +57,6 @@ func If(b bool, errText string) ErrorChain {
 	return u.If(b, errText)
 }
 
-// If b, run f, else run g. Either can be nil to skip.
-func IfElse(b bool, f func() error, g func() error) ErrorChain {
-	if b && f != nil {
-		return Then(f())
-	} else if g != nil {
-		return Then(g())
-	}
-	return &usd{}
-}
-
-// Then IIFE here:  Then(func()error{ return errors.New("hi")}())
-func Then(e error) ErrorChain {
-	return &usd{err: e}
-}
-
 func (u *usd) If(b bool, errText string) ErrorChain {
 	if u.err != nil && b {
 		u.err = errors.New(errText)
@@ -81,23 +64,24 @@ func (u *usd) If(b bool, errText string) ErrorChain {
 	return u
 }
 
-func (u *usd) IfElse(b bool, f func() error, g func() error) ErrorChain {
+func (u *usd) Recover(f func()) ErrorChain {
 	if u.err != nil {
 		return u
 	}
-	if b && f != nil {
-		return u.Then(f())
-	} else if g != nil {
-		return u.Then(g())
-	}
+	defer func() {
+		if v := recover(); v != nil {
+			u.err = fmt.Errorf("%v \n Stack: %s", v, string(debug.Stack()))
+		}
+	}()
+	f()
 	return u
 }
 
-func (u *usd) Then(e error) ErrorChain {
-	if u.err == nil {
-		u.err = e
+// Helper for Recover scenarios
+func PanicOnError(err error) {
+	if err != nil {
+		panic(err)
 	}
-	return u
 }
 
 func (u *usd) Explain(s string) ErrorChain {

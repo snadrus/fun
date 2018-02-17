@@ -2,6 +2,7 @@ package fun
 
 import (
 	"fmt"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -83,7 +84,7 @@ func (g *goMaker) Go(f func() error) {
 
 		defer func() {
 			if v := recover(); v != nil {
-				g.setErr(fmt.Sprint(v))
+				g.setErr(fmt.Sprintf("%v \n Stack: %s", v, string(debug.Stack())))
 			}
 		}()
 
