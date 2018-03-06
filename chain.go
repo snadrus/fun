@@ -64,7 +64,10 @@ func (u *usd) If(b bool, errText string) ErrorChain {
 	return u
 }
 
-func (u *usd) Recover(f func()) ErrorChain {
+func Recover(f func()) ErrorChain {
+	return (&usd{}).Recover(f)
+}
+func (u *usd) Recover(f func()) (u2 ErrorChain) {
 	if u.err != nil {
 		return u
 	}
@@ -72,13 +75,14 @@ func (u *usd) Recover(f func()) ErrorChain {
 		if v := recover(); v != nil {
 			u.err = fmt.Errorf("%v \n Stack: %s", v, string(debug.Stack()))
 		}
+		u2 = u
 	}()
 	f()
 	return u
 }
 
 // Helper for Recover scenarios
-func PanicOnError(err error) {
+func Err2Panic(err error) {
 	if err != nil {
 		panic(err)
 	}
